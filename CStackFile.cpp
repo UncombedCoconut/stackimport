@@ -12,6 +12,7 @@
 #include <iostream>
 #include <fstream>
 #include <sys/stat.h>
+#include <unistd.h>
 #include "picture.h"
 #include "woba.h"
 #include "CBuf.h"
@@ -111,9 +112,9 @@ void	NumVersionToStr( unsigned char numVersion[4], char outStr[16] )
 
 
 CStackFile::CStackFile()
-	: mDumpRawBlockData(false), mStatusMessages(true), mXmlFile(NULL),
-	mCardBlockSize(-1), mListBlockID(-1), mMaxProgress(0), mCurrentProgress(0),
-	mFontTableBlockID(-1), mStyleTableBlockID(-1), mProgressMessages(true), mDecodeGraphics(true)
+	: mDumpRawBlockData(false), mStatusMessages(true), mProgressMessages(true),
+	mDecodeGraphics(true), mXmlFile(NULL), mListBlockID(-1), mFontTableBlockID(-1),
+	mStyleTableBlockID(-1), mCardBlockSize(-1), mCurrentProgress(0), mMaxProgress(0)
 {
 	
 }
@@ -813,9 +814,9 @@ bool	CStackFile::LoadLayerBlock( const char* vBlockType, int32_t blockID, CBuf& 
 				}
 			}
 			int16_t		currStyleID = -1;
-			size_t		currOffset = 1;
+			ssize_t		currOffset = 1;
 			fprintf( vFile, "\t\t<text>" );
-			size_t		numChars = theText.size();
+			ssize_t		numChars = theText.size();
 			bool		currentlyGroup = false;
 			
 			for( auto currRun : styleRuns )
@@ -941,19 +942,18 @@ bool	CStackFile::LoadLayerBlock( const char* vBlockType, int32_t blockID, CBuf& 
 		fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
 
 	// Read AddColor data:
-#if MAC_CODE
-	OSType		theType = (!isCard) ? 'HCbg' : 'HCcd';
-	Handle		currIcon = Get1Resource( theType, blockID );
-	if( currIcon && GetHandleSize(currIcon) <= 0 )
+	std::string	theType = (!isCard) ? "HCbg" : "HCcd";
+	CResource	currIcon = mResFile.GetByID( theType, blockID );
+	if( currIcon && currIcon.GetSize() <= 0 )
 		fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
-	else if( currIcon && GetHandleSize(currIcon) > 0 )
+	else if( currIcon && currIcon.GetSize() > 0 )
 	{		
 		if( mStatusMessages )
-			fprintf( stdout, "Status: Converting AddColor '%s' %d.\n", ((theType == 'HCbg') ? "HCbg" : "HCcd"), blockID );
+			fprintf( stdout, "Status: Converting AddColor '%s' %d.\n", theType.c_str(), blockID );
 		
-		size_t	dataLen = GetHandleSize( currIcon );
+		size_t	dataLen = currIcon.GetSize();
 		CBuf	theData( dataLen );
-		theData.memcpy( 0, *currIcon, 0, dataLen );
+		theData.memcpy( 0, currIcon.GetBuffer(), 0, dataLen );
 		
 		size_t	currOffs = 0;
 		while( currOffs < dataLen )
@@ -1117,7 +1117,6 @@ bool	CStackFile::LoadLayerBlock( const char* vBlockType, int32_t blockID, CBuf& 
 		if( mProgressMessages )
 			fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
 	}
-#endif //MAC_CODE
 		
 	if( !isCard )
 		fprintf( vFile, "</background>\n" );
@@ -1215,25 +1214,22 @@ bool	CStackFile::LoadListBlock( CBuf& blockData )
 }
 
 
-#if MAC_CODE
 bool	CStackFile::LoadBWIcons()
 {
 	// Export all B/W icons:
-	SInt16		numIcons = Count1Resources( 'ICON' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	int16_t		numIcons = mResFile.Count( "ICON" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currIcon = Get1IndResource( 'ICON', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currIcon, &theID, &theType, name );
+		CResource	currIcon = mResFile.GetByIndex( "ICON", x );
+		int			theID = currIcon.GetID();
+		std::string name = currIcon.GetName();
 		char		fname[256];
 		
 		if( mStatusMessages )
-			fprintf( stdout, "Status: Converting 'ICON' %d.\n", theID );
+			fprintf( stdout, "Status: Converting 'ICON' %d.\n", int( currIcon.GetID() ) );
 		
 		picture		theIcon( 32, 32, 1, false );
-		theIcon.memcopyin( *currIcon, 0, 4 * 32 );
+		theIcon.memcopyin( currIcon.GetBuffer(), 0, 4 * 32 );
 		
 		theIcon.buildmaskfromsurroundings();
 		
@@ -1246,9 +1242,8 @@ bool	CStackFile::LoadBWIcons()
 		fprintf( mXmlFile, "\t<media>\n\t\t<id>%d</id>\n"
 							"\t\t<type>icon</type>\n"
 							"\t\t<name>", theID );
-		for( int n = 1; n <= name[0]; n++ )
+		for( char currCh: name )
 		{
-			char currCh = name[n];
 			if( currCh == '<' )
 				fprintf( mXmlFile, "&lt;" );
 			else if( currCh == '>' )
@@ -1268,20 +1263,16 @@ bool	CStackFile::LoadBWIcons()
 	
 	return true;
 }
-#endif //MAC_CODE
 
-#if MAC_CODE
 bool	CStackFile::LoadPictures()
 {
 	// Export all PICT images:
-	SInt16	numIcons = Count1Resources( 'PICT' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	int16_t	numIcons = mResFile.Count( "PICT" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currPicture = Get1IndResource( 'PICT', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currPicture, &theID, &theType, name );
+		CResource	currPicture = mResFile.GetByIndex( "PICT", x );
+		int			theID = currPicture.GetID();
+		std::string	name = currPicture.GetName();
 		char		fname[256];
 		
 		if( mStatusMessages )
@@ -1297,13 +1288,12 @@ bool	CStackFile::LoadPictures()
 		
 		for( int n = 0; n < 8; n++ )
 			fputs( "BILL_ATKINSON_ERIC_CARLSON_KEVIN_CALHOUN_DANIEL_THOME_HYPERCARD_", theFile );	// 64 bytes repeated 8 times is a neat 512 byte header.
-		fwrite( *currPicture, GetHandleSize( currPicture ), 1, theFile );
+		fwrite( currPicture.GetBuffer(), currPicture.GetSize(), 1, theFile );
 		fclose( theFile );
 
 		fprintf( mXmlFile, "\t<media>\n\t\t<id>%d</id>\n\t\t<type>picture</type>\n\t\t<name>", theID );
-		for( int n = 1; n <= name[0]; n++ )
+		for( char currCh : name )
 		{
-			char currCh = name[n];
 			if( currCh == '<' )
 				fprintf( mXmlFile, "&lt;" );
 			else if( currCh == '>' )
@@ -1321,19 +1311,15 @@ bool	CStackFile::LoadPictures()
 	
 	return true;
 }
-#endif //MAC_CODE
 
-#if MAC_CODE
 bool	CStackFile::LoadCursors()
 {
-	SInt16	numIcons = Count1Resources( 'CURS' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	int16_t	numIcons = mResFile.Count( "CURS" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currIcon = Get1IndResource( 'CURS', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currIcon, &theID, &theType, name );
+		CResource	currIcon = mResFile.GetByIndex( "CURS", x );
+		int       	theID = currIcon.GetID();
+		std::string	name = currIcon.GetName();
 		char		fname[256];
 		
 		if( mStatusMessages )
@@ -1348,17 +1334,16 @@ bool	CStackFile::LoadCursors()
 		}
 		
 		fputs( "P4\n16 16\n", theFile );
-		fwrite( *currIcon, 2 * 16, 1, theFile );
+		fwrite( currIcon.GetBuffer(), 2 * 16, 1, theFile );
 		fputs( "\nP4\n16 16\n", theFile );
-		fwrite( (*currIcon) +(2 * 16), 2 * 16, 1, theFile );
-		int16_t	vertPos = * (int16_t*) ((*currIcon) +(2 * 16) +(2 * 16));
-		int16_t	horzPos = * (int16_t*) ((*currIcon) +(2 * 16) +(2 * 16) +2);
+		fwrite( currIcon.GetBuffer() +(2 * 16), 2 * 16, 1, theFile );
+		int16_t	vertPos = * (int16_t*) (currIcon.GetBuffer() +(2 * 16) +(2 * 16));
+		int16_t	horzPos = * (int16_t*) (currIcon.GetBuffer() +(2 * 16) +(2 * 16) +2);
 		fclose( theFile );
 		
 		fprintf( mXmlFile, "\t<media>\n\t\t<id>%d</id>\n\t\t<type>cursor</type>\n\t\t<name>", theID );
-		for( int n = 1; n <= name[0]; n++ )
+		for( char currCh : name )
 		{
-			char currCh = name[n];
 			if( currCh == '<' )
 				fprintf( mXmlFile, "&lt;" );
 			else if( currCh == '>' )
@@ -1376,23 +1361,19 @@ bool	CStackFile::LoadCursors()
 	
 	return true;
 }
-#endif //MAC_CODE
 
 
-#if MAC_CODE
 bool	CStackFile::LoadSounds()
 {
 #if USE_QUICKTIME
 	EnterMovies();
 #endif
-	SInt16	numIcons = Count1Resources( 'snd ' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	int16_t	numIcons = mResFile.Count( "snd " );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currSound = Get1IndResource( 'snd ', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currSound, &theID, &theType, name );
+		CResource	currSound = mResFile.GetByIndex( "snd ", x );
+		int       	theID = currSound.GetID();
+		std::string	name = currSound.GetName();
 		char		fname[256];
 
 		if( mStatusMessages )
@@ -1420,7 +1401,7 @@ bool	CStackFile::LoadSounds()
 			return false;
 		}
 		
-		resErr = PasteHandleIntoMovie( currSound, 'snd ', theMovie, 0L, NULL );
+		resErr = PasteHandleIntoMovie( currSound.GetHandle(), 'snd ', theMovie, 0L, NULL );
 		if( resErr != noErr )
 		{
 			fprintf( stderr, "Error: Error %d inserting data of 'snd ' %d into QuickTime container.\n", (int)resErr, theID );
@@ -1460,7 +1441,7 @@ bool	CStackFile::LoadSounds()
 		
 		std::string		fpath( mBasePath );
 		
-		CSndResource	sndRes( *currSound, GetHandleSize(currSound) );
+		CSndResource	sndRes( currSound.GetBuffer(), currSound.GetSize() );
 		
 		if( sndRes.GetFormat() == 2 )
 		{
@@ -1489,15 +1470,14 @@ bool	CStackFile::LoadSounds()
 			fpath.append(fname);
 			
 			FILE	*	theFile = fopen( fpath.c_str(), "w" );
-			fwrite( *currSound, GetHandleSize(currSound), 1, theFile );
+			fwrite( currSound.GetBuffer(), currSound.GetSize(), 1, theFile );
 			fclose( theFile );
 		}
 	#endif
 		
 		fprintf( mXmlFile, "\t<media>\n\t\t<id>%d</id>\n\t\t<name>", theID );
-		for( int n = 1; n <= name[0]; n++ )
+		for( char currCh: name )
 		{
-			char currCh = name[n];
 			if( currCh == '<' )
 				fprintf( mXmlFile, "&lt;" );
 			else if( currCh == '>' )
@@ -1518,29 +1498,20 @@ bool	CStackFile::LoadSounds()
 	
 	return true;
 }
-#endif // MAC_CODE
 
-#if MAC_CODE
 bool	CStackFile::Load68000Resources()
 {
-	SInt16	numIcons = Count1Resources( 'XCMD' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	int16_t	numIcons = mResFile.Count( "XCMD" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currPicture = Get1IndResource( 'XCMD', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currPicture, &theID, &theType, name );
+		CResource	currPicture = mResFile.GetByIndex( "XCMD", x );
+		int			theID = currPicture.GetID();
+		std::string	name = currPicture.GetName();
 		char		fname[256];
-		int			nameLen = name[0];
 		
-		// Pascal String -> C-String:
-		memmove( name, name +1, nameLen );
-		name[nameLen] = 0;
-		
-		fprintf( stderr, "Warning: Skipping code resource 'XCMD' %d \"%s\".\n", theID, name );
+		fprintf( stderr, "Warning: Skipping code resource 'XCMD' %d \"%s\".\n", theID, name.c_str() );
 
-		snprintf( fname, sizeof(fname), "XCMD_68k_%d_%s.data", theID, name );
+		snprintf( fname, sizeof(fname), "XCMD_68k_%d_%s.data", theID, name.c_str() );
 		FILE*		theFile = fopen( fname, "w" );
 		if( !theFile )
 		{
@@ -1548,35 +1519,28 @@ bool	CStackFile::Load68000Resources()
 			return false;
 		}
 		
-		fwrite( *currPicture, GetHandleSize( currPicture ), 1, theFile );
+		fwrite( currPicture.GetBuffer(), currPicture.GetSize(), 1, theFile );
 		fclose( theFile );
 
 		fprintf( mXmlFile, "\t<externalcommand type=\"command\" platform=\"mac68k\" id=\"%d\" size=\"%ld\" name=\"%s\" file=\"%s\" />\n",
-							theID, GetHandleSize( currPicture ), name, fname );
+							theID, currPicture.GetSize(), name.c_str(), fname );
 		
 		if( mProgressMessages )
 			fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
 	}
 	
 	// Export all XFCN resources:
-	numIcons = Count1Resources( 'XFCN' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	numIcons = mResFile.Count( "XFCN" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currPicture = Get1IndResource( 'XFCN', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currPicture, &theID, &theType, name );
+		CResource	currPicture = mResFile.GetByIndex( "XFCN", x );
+		int			theID = currPicture.GetID();
+		std::string	name = currPicture.GetName();
 		char		fname[256];
-		int			nameLen = name[0];
 		
-		// Pascal String -> C-String:
-		memmove( name, name +1, nameLen );
-		name[nameLen] = 0;
-		
-		fprintf( stderr, "Warning: Skipping code resource 'XFCN' %d \"%s\".\n", theID, name );
+		fprintf( stderr, "Warning: Skipping code resource 'XFCN' %d \"%s\".\n", theID, name.c_str() );
 
-		snprintf( fname, sizeof(fname), "XFCN_68k_%d_%s.data", theID, name );
+		snprintf( fname, sizeof(fname), "XFCN_68k_%d_%s.data", theID, name.c_str() );
 		FILE*		theFile = fopen( fname, "w" );
 		if( !theFile )
 		{
@@ -1584,11 +1548,11 @@ bool	CStackFile::Load68000Resources()
 			return false;
 		}
 		
-		fwrite( *currPicture, GetHandleSize( currPicture ), 1, theFile );
+		fwrite( currPicture.GetBuffer(), currPicture.GetSize(), 1, theFile );
 		fclose( theFile );
 
 		fprintf( mXmlFile, "\t<externalcommand type=\"function\" platform=\"mac68k\" id=\"%d\" size=\"%ld\" name=\"%s\" file=\"%s\" />\n",
-							theID, GetHandleSize( currPicture ), name, fname );
+							theID, currPicture.GetSize(), name.c_str(), fname );
 		
 		if( mProgressMessages )
 			fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
@@ -1596,30 +1560,21 @@ bool	CStackFile::Load68000Resources()
 	
 	return true;
 }
-#endif //MAC_CODE
 
-#if MAC_CODE
 bool	CStackFile::LoadPowerPCResources()
 {
 	// Export all xcmd resources:
-	SInt16	numIcons = Count1Resources( 'xcmd' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	int16_t	numIcons = mResFile.Count( "xcmd" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currPicture = Get1IndResource( 'xcmd', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currPicture, &theID, &theType, name );
+		CResource	currPicture = mResFile.GetByIndex( "xcmd", x );
+		int			theID = currPicture.GetID();
+		std::string	name = currPicture.GetName();
 		char		fname[256];
-		int			nameLen = name[0];
 		
-		// Pascal String -> C-String:
-		memmove( name, name +1, nameLen );
-		name[nameLen] = 0;
-		
-		fprintf( stderr, "Warning: Skipping code resource 'xcmd' %d \"%s\".\n", theID, name );
+		fprintf( stderr, "Warning: Skipping code resource 'xcmd' %d \"%s\".\n", theID, name.c_str() );
 
-		snprintf( fname, sizeof(fname), "xcmd_ppc_%d_%s.data", theID, name );
+		snprintf( fname, sizeof(fname), "xcmd_ppc_%d_%s.data", theID, name.c_str() );
 		FILE*		theFile = fopen( fname, "w" );
 		if( !theFile )
 		{
@@ -1627,35 +1582,28 @@ bool	CStackFile::LoadPowerPCResources()
 			return false;
 		}
 		
-		fwrite( *currPicture, GetHandleSize( currPicture ), 1, theFile );
+		fwrite( currPicture.GetBuffer(), currPicture.GetSize(), 1, theFile );
 		fclose( theFile );
 
 		fprintf( mXmlFile, "\t<externalcommand type=\"command\" platform=\"macppc\" id=\"%d\" size=\"%ld\" name=\"%s\" file=\"%s\" />\n",
-							theID, GetHandleSize( currPicture ), name, fname );
+							theID, currPicture.GetSize(), name.c_str(), fname );
 		
 		if( mProgressMessages )
 			fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
 	}
 	
 	// Export all XFCN resources:
-	numIcons = Count1Resources( 'xfcn' );
-	for( SInt16 x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
+	numIcons = mResFile.Count( "xfcn" );
+	for( int16_t x = 1; x <= numIcons; x++ )	// Get1IndResource uses 1-based indexes.
 	{
-		Handle		currPicture = Get1IndResource( 'xfcn', x );
-		ResID       theID = 0;
-		ResType		theType = 0L;
-		Str255		name;
-		GetResInfo( currPicture, &theID, &theType, name );
+		CResource	currPicture = mResFile.GetByIndex( "xfcn", x );
+		int			theID = currPicture.GetID();
+		std::string	name = currPicture.GetName();
 		char		fname[256];
-		int			nameLen = name[0];
 		
-		// Pascal String -> C-String:
-		memmove( name, name +1, nameLen );
-		name[nameLen] = 0;
-		
-		fprintf( stderr, "Warning: Skipping code resource 'xfcn' %d \"%s\".\n", theID, name );
+		fprintf( stderr, "Warning: Skipping code resource 'xfcn' %d \"%s\".\n", theID, name.c_str() );
 
-		snprintf( fname, sizeof(fname), "xfcn_ppc_%d_%s.data", theID, name );
+		snprintf( fname, sizeof(fname), "xfcn_ppc_%d_%s.data", theID, name.c_str() );
 		FILE*		theFile = fopen( fname, "w" );
 		if( !theFile )
 		{
@@ -1663,11 +1611,11 @@ bool	CStackFile::LoadPowerPCResources()
 			return false;
 		}
 		
-		fwrite( *currPicture, GetHandleSize( currPicture ), 1, theFile );
+		fwrite( currPicture.GetBuffer(), currPicture.GetSize(), 1, theFile );
 		fclose( theFile );
 
 		fprintf( mXmlFile, "\t<externalcommand type=\"function\" platform=\"macppc\" id=\"%d\" size=\"%ld\" name=\"%s\" file=\"%s\" />\n",
-							theID, GetHandleSize( currPicture ), name, fname );
+							theID, currPicture.GetSize(), name.c_str(), fname );
 			
 		if( mProgressMessages )
 			fprintf( stdout, "Progress: %d of %d\n", ++mCurrentProgress, mMaxProgress );
@@ -1675,7 +1623,6 @@ bool	CStackFile::LoadPowerPCResources()
 
 	return true;
 }
-#endif //MAC_CODE
 
 
 bool	CStackFile::LoadFile( const std::string& fpath )
@@ -1719,27 +1666,8 @@ bool	CStackFile::LoadFile( const std::string& fpath )
 		fprintf( stderr, "Error: Couldn't create stack file at '%s'\n", stackPath.c_str() );
 		return false;
 	}
-		
-  #if MAC_CODE
-	FSRef		fileRef;
-	mResRefNum = -1;
 	
-	OSStatus	resErr = FSPathMakeRef( (const UInt8*) fpath.c_str(), &fileRef, NULL );
-	if( resErr == noErr )
-	{
-		mResRefNum = FSOpenResFile( &fileRef, fsRdPerm );
-		if( mResRefNum < 0 )
-		{
-			fprintf( stderr, "Warning: No Mac resource fork to import.\n" );
-			resErr = fnfErr;
-		}
-	}
-	else
-	{
-		fprintf( stderr, "Error: Error %d locating input file's resource fork.\n", (int)resErr );
-		mResRefNum = -1;
-	}
-  #endif //MAC_CODE
+	mResFile.LoadFile(fpath);
 	
 	if( mStatusMessages )
 		fprintf( stdout, "Status: Output package name is '%s'\n", packagePath.c_str() );
@@ -1786,7 +1714,7 @@ bool	CStackFile::LoadFile( const std::string& fpath )
 		
 		numBlocks++;
 		
-		if( strcmp(vBlockType,"TAIL") == 0 && vBlockID == 0xffffffff )	// End marker block?
+		if( strcmp(vBlockType,"TAIL") == 0 && vBlockID == -1 )	// End marker block?
 			break;
 		else if( strcmp(vBlockType,"FREE") == 0 )	// Not a free, reusable block?
 		{
@@ -1810,17 +1738,13 @@ bool	CStackFile::LoadFile( const std::string& fpath )
 	mMaxProgress = mBlockMap.size();
 	mCurrentProgress = 0;
 	
-  #if MAC_CODE
-	if( mResRefNum > 0 )
-	{
-		int		numResources = Count1Resources( 'ICON' ) +Count1Resources( 'PICT' ) +Count1Resources( 'CURS' )
-						+Count1Resources( 'snd ' ) +Count1Resources( 'HCbg' ) +Count1Resources( 'HCcd' )
-						+Count1Resources( 'XCMD' ) +Count1Resources( 'XFCN' ) +Count1Resources( 'xcmd' )
-						+Count1Resources( 'xfcn' );
-		mMaxProgress += numResources;
-		fprintf( stdout, "Status: Found %d resources in file.\n", numResources);
-	}
-  #endif // MAC_CODE
+	int		numResources = mResFile.Count( "ICON" ) +mResFile.Count( "PICT" ) +mResFile.Count( "CURS" )
+					+mResFile.Count( "snd " ) +mResFile.Count( "HCbg" ) +mResFile.Count( "HCcd" )
+					+mResFile.Count( "XCMD" ) +mResFile.Count( "XFCN" ) +mResFile.Count( "xcmd" )
+					+mResFile.Count( "xfcn" );
+	mMaxProgress += numResources;
+	fprintf( stdout, "Status: Found %d resources in file.\n", numResources);
+	
 	if( mProgressMessages )
 		fprintf( stdout, "Progress: %d of %d\n", mCurrentProgress, mMaxProgress );
 	
@@ -1906,19 +1830,14 @@ bool	CStackFile::LoadFile( const std::string& fpath )
 	if( success )
 		success = LoadListBlock( mBlockMap[CStackBlockIdentifier("LIST",mListBlockID)] );
 		
-  #if MAC_CODE
-	if( mResRefNum > 0 )
-	{
-		LoadBWIcons();
-		LoadPictures();
-		LoadCursors();
-		LoadSounds();
-		Load68000Resources();
-		LoadPowerPCResources();
-		
-		CloseResFile( mResRefNum );
-	}
-  #endif // MAC_CODE
+	LoadBWIcons();
+	LoadPictures();
+	LoadCursors();
+	LoadSounds();
+	Load68000Resources();
+	LoadPowerPCResources();
+	
+	mResFile.Close();
 	
 	fprintf( mXmlFile, "</project>\n" );
 	if( mXmlFile != stdout )
@@ -1928,13 +1847,13 @@ bool	CStackFile::LoadFile( const std::string& fpath )
 	if( mStackXmlFile != stdout )
 		fclose( mStackXmlFile );
 	
-  #if MAC_CODE
+  #if USE_QUICKTIME
 	if( resErr != fnfErr && resErr != noErr )
 	{
 		fprintf( stderr, "Error: During conversion of Macintosh fork of stack.\n" );
 		return false;
 	}
-  #endif // MAC_CODE
+  #endif // USE_QUICKTIME
 	
 	return true;
 }

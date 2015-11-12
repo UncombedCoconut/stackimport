@@ -7,26 +7,12 @@
  *
  */
 
-// If you're not compiling for a platform where the Mac resource manager is
-//	available, set the following to 0 to remove that code from compilation:
-#define MAC_CODE		1
-
-// If you're compiling for 64 bit, you don't have access to QuickTime, which
-//	we use to create AIFF files from 'snd ' resources. So turn this off.
-#define USE_QUICKTIME	(!__LP64__)
-
 
 #include <map>
 #include <vector>
 #include <stdint.h>
 #include "CBuf.h"
-
-#if MAC_CODE
-#include <Carbon/Carbon.h>
-#if USE_QUICKTIME
-#include <QuickTime/QuickTime.h>
-#endif
-#endif
+#include "CResourceFile.h"
 
 
 class CStackBlockIdentifier
@@ -136,14 +122,12 @@ protected:
 	bool	LoadStyleTable( int32_t blockID, CBuf& blockData );
 	bool	LoadLayerBlock( const char* vBlockType, int32_t blockID, CBuf& blockData, uint8_t inFlags );	// Card or Bkgd.
 	
-#if MAC_CODE
 	bool	LoadBWIcons();
 	bool	LoadPictures();
 	bool	LoadCursors();
 	bool	LoadSounds();
 	bool	Load68000Resources();
 	bool	LoadPowerPCResources();
-#endif //MAC_CODE
 
 protected:
 	bool			mDumpRawBlockData;	// Create .data files with the contents of each block.
@@ -164,8 +148,6 @@ protected:
 	std::string		mFileName;			// Name of the original stack file, w/o the path.
 	std::string		mStyleSheetName;	// Name of CSS file containing our styles table.
 	CFontTable		mFontTable;			// Actual, parsed font ID -> name mappings from FTBL block.
-#if MAC_CODE
-	SInt16			mResRefNum;
-#endif
+	CResourceFile		mResFile;			// Resource fork of the stack file (or a dump of it)
 	std::map<int16_t,CStyleEntry>	mStyles;
 };
