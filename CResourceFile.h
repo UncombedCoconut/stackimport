@@ -16,6 +16,7 @@
 //	we use to create AIFF files from 'snd ' resources. So turn this off.
 #define USE_QUICKTIME	(!__LP64__)
 
+#include <map>
 #include <string>
 #include <stdint.h>
 #include <stdlib.h>
@@ -41,10 +42,12 @@ public:
 	CResource( Handle handle );
 	Handle				GetHandle();
 #else
+	CResource( int16_t id, const std::string& fpath );
 #endif
 protected:
 	int16_t		mID;
 	std::string	mName;
+	std::string	mBuffer;
 #if MAC_CODE
 	Handle		mHandle;
 #else
@@ -66,5 +69,9 @@ protected:
 	OSType		MakeOSType( const std::string& type );
 
 	SInt16		mResRefNum;
+#else
+	typedef std::map<int16_t, std::string>	IDMap;
+	typedef std::map<std::string, IDMap>	TypeMap;
+	TypeMap		mMap;
 #endif
 };

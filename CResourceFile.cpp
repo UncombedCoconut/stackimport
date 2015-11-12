@@ -16,6 +16,21 @@ CResourceFile::CResourceFile()
 	
 }
 
+CResource::CResource()
+{
+	
+}
+
+int16_t				CResource::GetID()
+{
+	return mID;
+}
+
+const std::string&	CResource::GetName()
+{
+	return mName;
+}
+
 #if MAC_CODE
 
 CResource::CResource( Handle handle )
@@ -32,16 +47,6 @@ CResource::CResource( Handle handle )
 CResource::operator bool()
 {
 	return mHandle;
-}
-
-int16_t				CResource::GetID()
-{
-	return mID;
-}
-
-const std::string&	CResource::GetName()
-{
-	return mName;
 }
 
 const char*			CResource::GetBuffer()
@@ -134,5 +139,89 @@ CResource	CResourceFile::GetByIndex( const std::string& type, int16_t index )
 }
 
 #else //MAC_CODE
+
+#include <cstdlib>
+#include <dirent.h>
+#include <fstream>
+#include <sstream>
+
+CResource::CResource( int16_t id, const std::string& fpath )
+	: mID(id)
+{
+	std::string				fname = fpath.substr( fpath.rfind( '/' ) );
+	std::string::size_type	_1 = fname.find( '_' ), _2 = fname.find( '_', _1);
+	std::ifstream			in( fpath );
+	mName = fname.substr( _2+1 );
+	if( in )
+	{
+		std::stringstream	ss;
+		ss << in.rdbuf();
+		mBuffer = ss.str();
+	}
+}
+
+CResource::operator bool()
+{
+	return GetSize();
+}
+
+const char*			CResource::GetBuffer()
+{
+	return mBuffer.c_str();
+}
+
+size_t				CResource::GetSize()
+{
+	return mBuffer.size();
+}
+
+void		CResourceFile::LoadFile( const std::string& fpath )
+{
+	std::string::size_type  _1, _2, slash, stak = fpath.rfind( ".stak" );
+	std::string				type, name, path = fpath.substr( 0, stak ) + ".rsrc";
+	DIR*					dir = opendir( path.c_str() );
+	dirent*					ent;
+	int16_t					id;
+	if( dir )
+	{
+		while( (ent = readdir(dir)) )
+		{
+			name = ent->d_name;
+			_1 = name.find( '_');
+			_2 = name.find( '_', _1+1 );
+			type = name.substr( 0, _1 );
+			id = atoi( name.substr( _1+1, _2-_1-1 ).c_str() );
+			mMap[type][id] = path + '/' + name;
+		}
+		closedir( dir );
+	}
+}
+
+void		CResourceFile::Close()
+{
+	
+}
+
+int16_t	CResourceFile::Count( const std::string& type )
+{
+	return mMap[type].size();
+}
+
+CResource	CResourceFile::GetByID( const std::string& type, int16_t id )
+{
+	auto	it = mMap[type].find(id);
+	if( it == mMap[type].end() )
+		return CResource();
+	return CResource( id, it->second );
+}
+
+CResource	CResourceFile::GetByIndex( const std::string& type, int16_t index )
+{
+	// FIXME: This is O(N) (so a scan is quadratic) for no reason.
+	auto it = mMap[type].begin();
+	while( --index )
+		++it;
+	return CResource( it->first, it->second );
+}
 
 #endif //MAC_CODE
