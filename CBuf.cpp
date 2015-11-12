@@ -123,7 +123,7 @@ void	CBuf::memcpy( size_t toOffs, const CBuf& fromPtr, size_t fromOffs, size_t a
 
 const char CBuf::operator [] ( int idx ) const
 {
-	if( idx >= mShared->mSize )
+	if( unsigned(idx) >= mShared->mSize )
 		return 0;
 	return mShared->mBuffer[idx];
 }
@@ -132,7 +132,7 @@ const char CBuf::operator [] ( int idx ) const
 char& CBuf::operator [] ( int idx )
 {
 	static char		dummy[2048] = {0};
-	if( idx >= mShared->mSize )
+	if( unsigned(idx) >= mShared->mSize )
 		return dummy[0];
 	
 	make_buffer_exclusive();

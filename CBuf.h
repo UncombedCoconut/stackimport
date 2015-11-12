@@ -9,9 +9,11 @@
 
 #pragma once
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string>
+#include <string.h>
 
 
 struct shared_buffer
