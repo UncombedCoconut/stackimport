@@ -21,6 +21,9 @@ functionality, you'll also have to write code to replace the Mac-specific code (
 resource fork of the stack and converts 'snd ' resources to AIFF -- the resource-fork-reading code in
 https://github.com/uliwitness/reclassicfication may be a good starting point).
 
+For example, using g++:
+`g++ woba.cpp picture.cpp main.cpp CWAVEFile.cpp CStackFile.cpp CSndResource.cpp CResourceFile.cpp CBuf.cpp byteutils.cpp -std=gnu++11`
+
 
 How to use this
 ---------------
